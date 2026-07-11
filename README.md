@@ -1,7 +1,10 @@
 # pi-config-sync
 
-Securely sync your `~/.pi/agent` configuration across machines through a git remote.
-It is a [pi package](https://pi.dev/packages) and keeps the repository **in place** so its history stays transparent.
+[![npm](https://img.shields.io/npm/v/pi-config-sync)](https://www.npmjs.com/package/pi-config-sync)
+[![CI](https://github.com/diogovdias/pi-config-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/diogovdias/pi-config-sync/actions/workflows/ci.yml)
+
+Securely sync your `~/.pi/agent` configuration across machines through a git remote — automatically, with hard guards that keep secrets out.
+It is a [pi package](https://pi.dev/packages) and keeps the repository **in place** (`~/.pi/agent` *is* the repo) so its history stays transparent.
 
 ## Install
 
@@ -21,6 +24,20 @@ Without `gh`, first create a private remote yourself, then run:
 
 On each additional machine, run `/gitsync link` (with `gh`) or `/gitsync link <remote-url>`. It fetches the remote configuration. A differing local allowed file is moved to `<file>.local-backup`; it is never deleted, and linking refuses to touch a directory that already has its own git history. Run `/reload` afterwards; local-only allowed files are committed and pushed by the next sync.
 
+That is the whole setup — from here on, syncing is automatic.
+
+## How it works
+
+```text
+session start    → auto-sync (rate-limited, default every 5 min across sessions)
+                   ensure ignore rules → commit allowlisted changes → fetch
+                   → fast-forward or rebase → push
+                   → notifies you to /reload when remote changes were pulled
+session shutdown → best-effort commit + push (next start reconciles the rest)
+```
+
+Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions coordinate through a pid-liveness lock, subagent child processes never sync, and a diverged repo aborts the rebase and asks you to resolve manually — nothing is ever forced.
+
 ## Commands
 
 | Command | Description |
@@ -34,9 +51,30 @@ On each additional machine, run `/gitsync link` (with `gh`) or `/gitsync link <r
 
 ## Security model
 
-This package uses an **allowlist**, not a broad config-directory upload. By default it syncs `.gitignore`, `settings.json`, `AGENTS.md`, `git-sync.jsonc`, and `extensions/`, `chains/`, `prompts/`, `themes/`, and `skills/`. You can add safe paths explicitly.
+This package uses an **allowlist**, not a broad config-directory upload.
 
-It never stages auth files, token/secret/credential-named files, `.env` files, sessions, state, package/cache directories, or `node_modules`. That policy is enforced four ways: a managed allowlist `.gitignore`, `.git/info/exclude`, a post-stage hard guard that resets and aborts any bad staging, and a tracked-file scan warning. It never force-pushes.
+### What syncs
+
+| Path | Contents |
+| --- | --- |
+| `settings.json` | Model defaults, theme, installed package list |
+| `AGENTS.md` | Your global agent instructions |
+| `extensions/`, `chains/`, `prompts/`, `themes/`, `skills/` | Your custom resources |
+| `.gitignore`, `git-sync.jsonc` | The sync policy itself |
+| `extraPaths` entries | Anything safe you add explicitly |
+
+Nothing outside the allowlist ever syncs — new files are ignored by default.
+
+### What never syncs
+
+| Path / pattern | Why |
+| --- | --- |
+| `auth*` (`auth.json`) | API keys and OAuth tokens |
+| `*token*`, `*secret*`, `*credential*`, `*.env*`, `*.local.json` | Anything named like a secret |
+| `sessions/`, `state/`, `.git-sync/` | Local history and machine state |
+| `npm/`, `git/`, `bin/`, `node_modules` | Installed packages — pi reinstalls them from `settings.json` |
+
+The policy is enforced four ways — a managed allowlist `.gitignore`, `.git/info/exclude`, a post-stage hard guard that resets and aborts any commit staging a denied path, and a tracked-file scan warning — so it holds even against `git add -f`. It never force-pushes.
 
 Git commands operate only on the agent directory's own repository — `GIT_CEILING_DIRECTORIES` stops git from ever discovering a parent repository (such as dotfiles in `$HOME`), and sync refuses to run until `~/.pi/agent/.git` itself exists. GitHub CLI calls are account-level (`gh api user`, `gh repo view/create`) and never modify repository contents. Use a private repository. When `gh` can identify a public GitHub remote, the package warns; it does not block because no credentials are synced.
 
@@ -70,6 +108,13 @@ Remove the package with `pi remove npm:pi-config-sync`. Your local repository an
 If migrating from a hand-rolled `extensions/git-sync.ts`, delete that file first to avoid duplicate `/gitsync` registration.
 
 Onboarding flow inspired by [opencode-synced](https://github.com/iHildy/opencode-synced).
+
+## Alternatives
+
+- [`pi-git-sync`](https://www.npmjs.com/package/pi-git-sync) — manual-first `/sync` with interactive conflict handling, including agent-assisted merges and force-push / hard-reset options.
+- [`pi-sync-config`](https://www.npmjs.com/package/pi-sync-config) — background sync through a separate staging clone, with `settings.json` machine-key stripping, SSH-only remotes, and fast-forward-only pulls.
+
+pi-config-sync differs from both: your agent directory itself is the repository (transparent history, no copy step), sync is fully automatic, onboarding can create the private repo through `gh`, and no destructive git operation exists in any code path. All three register different commands and can coexist.
 
 ## Releases
 
