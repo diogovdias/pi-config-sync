@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true,"module":"nodenext","target":"es2022","noEmit":true,"allowImportingTsExtensions":true,"erasableSyntaxOnly":true,"verbatimModuleSyntax":true,"skipLibCheck":true},"include":["extensions","test"]}
