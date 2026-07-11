@@ -36,6 +36,12 @@ session start    → auto-sync (rate-limited, default every 5 min across session
 session shutdown → best-effort commit + push (next start reconciles the rest)
 ```
 
+### Machine-local settings
+
+`settings.json` uses a git clean/smudge filter: portable settings are committed, while each machine retains its own selected top-level values. By default this is `lastChangelogVersion`; local values live only in `.git-sync/settings.machine.json`. On an existing repository, the first sync after upgrading creates a one-time commit that strips those keys from the committed blob and normalizes JSON formatting — the live settings file is unchanged.
+
+The filter is fail-open: a checkout on a machine without pi-config-sync still works, but its machine-local values are not stripped until the package runs again. A newly linked machine gets its sidecar as pi writes its local settings.
+
 Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions coordinate through a pid-liveness lock, subagent child processes never sync, and a diverged repo aborts the rebase and asks you to resolve manually — nothing is ever forced.
 
 ## Commands
@@ -57,7 +63,7 @@ This package uses an **allowlist**, not a broad config-directory upload.
 
 | Path | Contents |
 | --- | --- |
-| `settings.json` | Model defaults, theme, installed package list |
+| `settings.json` | Model defaults, theme, installed package list — committed with machine-local keys stripped |
 | `AGENTS.md` | Your global agent instructions |
 | `extensions/`, `chains/`, `prompts/`, `themes/`, `skills/` | Your custom resources |
 | `.gitignore`, `git-sync.jsonc` | The sync policy itself |
@@ -87,11 +93,12 @@ Create `~/.pi/agent/git-sync.jsonc`:
   "autoSyncIntervalMinutes": 5,
   "includeHostname": true,
   "extraPaths": ["my-safe-directory"],
-  "warnOnPublicRemote": true
+  "warnOnPublicRemote": true,
+  "machineLocalSettings": ["lastChangelogVersion"]
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping. Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`.
 
 ## Conflicts and uninstall
 
