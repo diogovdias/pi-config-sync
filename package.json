@@ -1,16 +1,39 @@
 {
   "name": "pi-config-sync",
-  "version": "0.1.0",
-  "repository": { "type": "git", "url": "git+https://github.com/diogovdias/pi-config-sync.git" },
+  "version": "0.1.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diogovdias/pi-config-sync.git"
+  },
   "description": "Sync your ~/.pi/agent config across machines through a private git repo — with hard guards that keep secrets out.",
   "type": "module",
   "license": "MIT",
   "author": "Diogo Dias",
-  "keywords": ["pi-package"],
-  "files": ["extensions"],
-  "pi": { "extensions": ["./extensions"] },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" },
-  "devDependencies": { "typescript": "^5", "@types/node": "^24", "@earendil-works/pi-coding-agent": "*" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "node --test test/*.test.ts", "check": "npm run typecheck && npm test" },
-  "engines": { "node": ">=23" }
+  "keywords": [
+    "pi-package"
+  ],
+  "files": [
+    "extensions"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^24",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=23"
+  }
 }
