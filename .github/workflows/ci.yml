@@ -1,0 +1,16 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Verify tarball contents
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e 'const fs=require("fs");const f=JSON.parse(fs.readFileSync("pack.json"))[0].files.map(x=>x.path);const ok=new Set(["package.json","README.md","LICENSE","extensions/git-sync.ts"]);if(f.some(x=>!ok.has(x)))throw new Error(`unexpected tarball files: ${f.filter(x=>!ok.has(x)).join(", ")}`)'

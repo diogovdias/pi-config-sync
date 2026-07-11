@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { execFile as execFileCb } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { promisify } from "node:util";
+import { commitLocalChanges, ensureIgnoreRules, runInit, runLink, runSync, shouldAutoSync, stagedSecretFiles, stripJsonComments, withLock } from "../extensions/git-sync.ts";
+const exec = promisify(execFileCb);
+const ctx = { hasUI: false, ui: { setStatus() {}, notify() {} } } as never;
+async function sh(cmd: string, args: string[], cwd?: string) { return exec(cmd, args, { cwd }); }
+async function machine(name: string) { const root = await fs.mkdtemp(path.join(os.tmpdir(), `pi-git-sync-${name}-`)); const dir = path.join(root, "agent"); await fs.mkdir(path.join(dir, "extensions"), { recursive: true }); await fs.writeFile(path.join(dir, "settings.json"), JSON.stringify({ machine: name })); await fs.writeFile(path.join(dir, "AGENTS.md"), "rules\n"); await fs.writeFile(path.join(dir, "extensions", "foo.ts"), "export {}\n"); await fs.writeFile(path.join(dir, "auth.json"), `secret-${name}`); return { root, dir }; }
+async function bare(root: string) { const repo = path.join(root, "origin.git"); await sh("git", ["init", "--bare", repo]); return repo; }
+
+test("init, link, and sync round-trip without network", async () => { const a = await machine("a"), remote = await bare(a.root); await runInit(remote, ctx, { dir: a.dir }); const b = await machine("b"); await fs.writeFile(path.join(b.dir, "settings.json"), '{"machine":"local"}'); await runLink(remote, ctx, { dir: b.dir }); assert.equal(await fs.readFile(path.join(b.dir, "auth.json"), "utf8"), "secret-b"); assert.equal(await fs.readFile(path.join(b.dir, "settings.json"), "utf8"), '{"machine":"a"}'); assert.equal(await fs.readFile(path.join(b.dir, "settings.json.local-backup"), "utf8"), '{"machine":"local"}'); await fs.writeFile(path.join(b.dir, "settings.json"), '{"machine":"updated"}'); await runSync(ctx, { auto: false, push: true }, { dir: b.dir }); await runSync(ctx, { auto: false, push: true }, { dir: a.dir }); assert.equal(await fs.readFile(path.join(a.dir, "settings.json"), "utf8"), '{"machine":"updated"}'); });
+
+test("staging guard refuses secrets even when manually force-added", async () => { const a = await machine("guard"); await sh("git", ["init", "-b", "main"], a.dir); await ensureIgnoreRules(a.dir); await sh("git", ["add", "-f", "auth.json", "extensions/foo.ts"], a.dir); await assert.rejects(() => commitLocalChanges({ dir: a.dir }), /sensitive paths: auth.json/); assert.deepEqual(await stagedSecretFiles(a.dir), []); });
+
+test("init writes an allowlist before its first commit", async () => { const a = await machine("rules"), remote = await bare(a.root); await runInit(remote, ctx, { dir: a.dir }); const tree = (await sh("git", ["ls-tree", "-r", "--name-only", "HEAD"], a.dir)).stdout.split("\n"); assert(tree.includes(".gitignore")); assert(!tree.some(x => x === "auth.json")); assert.match(await fs.readFile(path.join(a.dir, ".git", "info", "exclude"), "utf8"), /auth\*/); });
+
+test("lock skips a live owner and clears a dead owner", async () => { const a = await machine("lock"), state = path.join(a.dir, ".git-sync"); await fs.mkdir(state); await fs.writeFile(path.join(state, "lock"), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })); assert.equal(await withLock(ctx, async () => "ran", { dir: a.dir }), undefined); await fs.writeFile(path.join(state, "lock"), JSON.stringify({ pid: 999999, startedAt: new Date(0).toISOString() })); assert.equal(await withLock(ctx, async () => "ran", { dir: a.dir }), "ran"); await assert.rejects(fs.access(path.join(state, "lock"))); });
+
+test("JSONC config drives rate limit and rejects hostile extra paths", async () => { const a = await machine("config"); await sh("git", ["init", "-b", "main"], a.dir); await sh("git", ["remote", "add", "origin", path.join(a.root, "none")], a.dir); await fs.writeFile(path.join(a.dir, "git-sync.jsonc"), '{ /* comment */ "autoSyncIntervalMinutes": 30, "extraPaths": ["safe", "../bad", "mytoken"] }'); await fs.mkdir(path.join(a.dir, ".git-sync")); await fs.writeFile(path.join(a.dir, ".git-sync", "state.json"), JSON.stringify({ lastAutoSyncAt: new Date().toISOString() })); assert.equal(stripJsonComments('{// x\n"a": 1}'), '{\n"a": 1}'); assert.equal(await shouldAutoSync({ dir: a.dir }), false); await ensureIgnoreRules(a.dir, { extraPaths: ["safe", "../bad", "mytoken"] }); const ignore = await fs.readFile(path.join(a.dir, ".gitignore"), "utf8"); assert.match(ignore, /!safe\//); assert.doesNotMatch(ignore, /mytoken/); });
