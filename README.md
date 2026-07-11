@@ -19,7 +19,7 @@ Without `gh`, first create a private remote yourself, then run:
 /gitsync init git@github.com:you/pi-agent-config.git
 ```
 
-On each additional machine, run `/gitsync link` (with `gh`) or `/gitsync link <remote-url>`. It fetches the remote configuration. A differing local allowed file is moved to `<file>.local-backup`; it is never deleted. Run `/reload` afterwards.
+On each additional machine, run `/gitsync link` (with `gh`) or `/gitsync link <remote-url>`. It fetches the remote configuration. A differing local allowed file is moved to `<file>.local-backup`; it is never deleted, and linking refuses to touch a directory that already has its own git history. Run `/reload` afterwards; local-only allowed files are committed and pushed by the next sync.
 
 ## Commands
 
@@ -38,7 +38,7 @@ This package uses an **allowlist**, not a broad config-directory upload. By defa
 
 It never stages auth files, token/secret/credential-named files, `.env` files, sessions, state, package/cache directories, or `node_modules`. That policy is enforced four ways: a managed allowlist `.gitignore`, `.git/info/exclude`, a post-stage hard guard that resets and aborts any bad staging, and a tracked-file scan warning. It never force-pushes.
 
-Git and GitHub CLI commands run only with the agent directory as their working directory. Use a private repository. When `gh` can identify a public GitHub remote, the package warns; it does not block because no credentials are synced.
+Git commands operate only on the agent directory's own repository — `GIT_CEILING_DIRECTORIES` stops git from ever discovering a parent repository (such as dotfiles in `$HOME`), and sync refuses to run until `~/.pi/agent/.git` itself exists. GitHub CLI calls are account-level (`gh api user`, `gh repo view/create`) and never modify repository contents. Use a private repository. When `gh` can identify a public GitHub remote, the package warns; it does not block because no credentials are synced.
 
 ## Configuration
 
