@@ -1,6 +1,7 @@
 {
-  "name": "pi-git-sync",
+  "name": "pi-config-sync",
   "version": "0.1.0",
+  "repository": { "type": "git", "url": "git+https://github.com/diogovdias/pi-config-sync.git" },
   "description": "Sync your ~/.pi/agent config across machines through a private git repo — with hard guards that keep secrets out.",
   "type": "module",
   "license": "MIT",

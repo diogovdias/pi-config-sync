@@ -1,4 +1,4 @@
-# pi-git-sync
+# pi-config-sync
 
 Securely sync your `~/.pi/agent` configuration across machines through a git remote.
 It is a [pi package](https://pi.dev/packages) and keeps the repository **in place** so its history stays transparent.
@@ -6,7 +6,7 @@ It is a [pi package](https://pi.dev/packages) and keeps the repository **in plac
 ## Install
 
 ```sh
-pi install npm:pi-git-sync
+pi install npm:pi-config-sync
 ```
 
 ## Quickstart
@@ -65,7 +65,7 @@ git status
 git pull --rebase
 ```
 
-Remove the package with `pi remove npm:pi-git-sync`. Your local repository and remote remain until you delete them yourself.
+Remove the package with `pi remove npm:pi-config-sync`. Your local repository and remote remain until you delete them yourself.
 
 If migrating from a hand-rolled `extensions/git-sync.ts`, delete that file first to avoid duplicate `/gitsync` registration.
 
