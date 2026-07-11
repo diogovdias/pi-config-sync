@@ -73,4 +73,4 @@ Onboarding flow inspired by [opencode-synced](https://github.com/iHildy/opencode
 
 ## Releases
 
-Tags matching `v*` publish via the included provenance-enabled GitHub Action after an `NPM_TOKEN` secret is configured.
+Tags matching `v*` publish automatically through the included GitHub Action using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no registry tokens exist anywhere in the pipeline. Every release carries a provenance attestation linking the tarball to its exact source commit, verifiable on the npm package page.
