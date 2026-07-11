@@ -38,7 +38,7 @@ session shutdown → best-effort commit + push (next start reconciles the rest)
 
 ### Machine-local settings
 
-`settings.json` uses a git clean/smudge filter: portable settings are committed, while each machine retains its own selected top-level values. By default this is `lastChangelogVersion`; local values live only in `.git-sync/settings.machine.json`. On an existing repository, the first sync after upgrading creates a one-time commit that strips those keys from the committed blob and normalizes JSON formatting — the live settings file is unchanged.
+`settings.json` uses a git clean/smudge filter: portable settings are committed, while each machine retains its own selected top-level values. By default this is `lastChangelogVersion`; machine values stay in your live settings file (mirrored to `.git-sync/settings.machine.json`) and are absent only from committed blobs. On an existing repository, the first sync after upgrading creates a one-time commit that strips those keys from the committed blob and normalizes JSON formatting — the live settings file is unchanged.
 
 The filter is fail-open: a checkout on a machine without pi-config-sync still works, but its machine-local values are not stripped until the package runs again. A newly linked machine gets its sidecar as pi writes its local settings.
 
@@ -98,7 +98,7 @@ Create `~/.pi/agent/git-sync.jsonc`:
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping. Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`.
 
 ## Conflicts and uninstall
 
