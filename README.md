@@ -42,6 +42,8 @@ session shutdown → best-effort commit + push (next start reconciles the rest)
 
 The filter is fail-open: a checkout on a machine without pi-config-sync still works, but its machine-local values are not stripped until the package runs again. A newly linked machine gets its sidecar as pi writes its local settings.
 
+The filter script runs under the Node.js that runs pi. When pi ships as a single bundled executable (for example through mise), that executable cannot run the script, so the package uses the first `node` found on `PATH` instead and falls back to a disabled filter with a warning. Set `nodePath` in `git-sync.jsonc` to pin a specific Node.js binary; the git filter configuration is corrected on the next sync.
+
 Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions coordinate through a pid-liveness lock, subagent child processes never sync, and a diverged repo aborts the rebase and asks you to resolve manually — nothing is ever forced.
 
 ## Commands
@@ -94,11 +96,12 @@ Create `~/.pi/agent/git-sync.jsonc`:
   "includeHostname": true,
   "extraPaths": ["my-safe-directory"],
   "warnOnPublicRemote": true,
-  "machineLocalSettings": ["lastChangelogVersion"]
+  "machineLocalSettings": ["lastChangelogVersion"],
+  "nodePath": "/usr/local/bin/node"
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
 
 ## Conflicts and uninstall
 
