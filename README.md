@@ -71,7 +71,7 @@ This package uses an **allowlist**, not a broad config-directory upload.
 | `.gitignore`, `git-sync.jsonc` | The sync policy itself |
 | `extraPaths` entries | Anything safe you add explicitly |
 
-Nothing outside the allowlist ever syncs — new files are ignored by default.
+Nothing outside the allowlist ever syncs — new files are ignored by default. Subdirectories of allowed directories sync at any depth, with two exceptions that sync and `/gitsync status` warn about: a directory that is itself a git repository (a cloned extension) is skipped, so remove its inner `.git` to sync its files; and a path whose name matches the denylist below (such as `extensions/token-counter/`) is skipped, so rename it.
 
 ### What never syncs
 
