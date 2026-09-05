@@ -94,11 +94,14 @@ Create `~/.pi/agent/git-sync.jsonc`:
   "includeHostname": true,
   "extraPaths": ["my-safe-directory"],
   "warnOnPublicRemote": true,
-  "machineLocalSettings": ["lastChangelogVersion"]
+  "machineLocalSettings": ["lastChangelogVersion"],
+  "nodeExecutable": "/usr/bin/node"
 }
 ```
 
 Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`.
+
+`nodeExecutable` overrides the Node.js executable used to run the git clean/smudge filter. Normally it defaults to Pi's runtime (`process.execPath`). Set it to an absolute Node.js path when Pi is shipped as a Node SEA, where `process.execPath` is the Pi binary rather than Node (for example, `"/usr/bin/node"`). Since this config syncs between machines, use the machine-local `PI_CONFIG_SYNC_NODE_EXECUTABLE` environment variable when the Node path differs per machine; it takes precedence over `nodeExecutable`.
 
 ## Conflicts and uninstall
 
