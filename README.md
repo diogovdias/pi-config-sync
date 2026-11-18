@@ -67,6 +67,7 @@ This package uses an **allowlist**, not a broad config-directory upload.
 | --- | --- |
 | `settings.json` | Model defaults, theme, installed package list — committed with machine-local keys stripped |
 | `AGENTS.md` | Your global agent instructions |
+| `mcp.json` | Your user-level MCP server definitions (`pi mcp add`, `/mcp`) — keep secrets in `${ENV_VAR}` references or OAuth, never inline |
 | `extensions/`, `chains/`, `prompts/`, `themes/`, `skills/` | Your custom resources |
 | `.gitignore`, `git-sync.jsonc` | The sync policy itself |
 | `extraPaths` entries | Anything safe you add explicitly |
@@ -77,10 +78,10 @@ Nothing outside the allowlist ever syncs — new files are ignored by default. S
 
 | Path / pattern | Why |
 | --- | --- |
-| `auth*` (`auth.json`) | API keys and OAuth tokens |
+| `auth*` (`auth.json`), `mcp-auth*` (`mcp-auth.json`) | API keys and OAuth tokens — MCP sign-in credentials never leave the machine |
 | `*token*`, `*secret*`, `*credential*`, `*.env*`, `*.local.json` | Anything named like a secret |
 | `sessions/`, `state/`, `.git-sync/` | Local history and machine state |
-| `logs/` at any depth | Runtime logs, including permission audit/debug logs; retained locally |
+| `logs/` at any depth, `mcp.log*` | Runtime logs, including MCP server logs and permission audit/debug logs; retained locally |
 | `npm/`, `git/`, `bin/`, `node_modules` | Installed packages — pi reinstalls them from `settings.json` |
 
 The policy is enforced four ways — a managed allowlist `.gitignore`, `.git/info/exclude`, a post-stage hard guard that refuses additions or changes to denied paths, and a push guard that checks the committed tree and outgoing history — so force-staging a denied path does not bypass the commit guard. Deletions remain allowed for cleanup. It never force-pushes.
