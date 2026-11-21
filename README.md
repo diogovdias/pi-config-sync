@@ -67,7 +67,6 @@ This package uses an **allowlist**, not a broad config-directory upload.
 | --- | --- |
 | `settings.json` | Model defaults, theme, installed package list — committed with machine-local keys stripped |
 | `AGENTS.md` | Your global agent instructions |
-| `mcp.json` | Your user-level MCP server definitions (`pi mcp add`, `/mcp`) — keep secrets in `${ENV_VAR}` references or OAuth, never inline |
 | `extensions/`, `chains/`, `prompts/`, `themes/`, `skills/` | Your custom resources |
 | `.gitignore`, `git-sync.jsonc` | The sync policy itself |
 | `extraPaths` entries | Anything safe you add explicitly |
@@ -105,7 +104,7 @@ Create `~/.pi/agent/git-sync.jsonc`:
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. To sync your user-level MCP server definitions (`pi mcp add`, `/mcp`), add `"mcp.json"` to `extraPaths`. It is opt-in because servers can be configured with inline API keys or headers; keep secrets in `${ENV_VAR}` references or OAuth before enabling it. `mcp-auth.json` and `mcp.log` never sync. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
 
 ## Conflicts and uninstall
 
