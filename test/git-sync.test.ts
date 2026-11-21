@@ -52,7 +52,7 @@ test("machine-local filter strips committed settings and preserves local values"
 
 test("filter passes malformed settings through byte-identically", async () => { const a = await machine("filter-raw"); await sh("git", ["init", "-b", "main"], a.dir); await commitLocalChanges({ dir: a.dir }); const script = path.join(a.dir, ".git-sync", "filter.mjs"), raw = Buffer.from('{ broken\n'); const run = (mode: string) => new Promise<Buffer>((resolve, reject) => { const child = execFileCb(process.execPath, [script, mode], (error, stdout) => error ? reject(error) : resolve(Buffer.from(stdout))); child.stdin?.end(raw); }); assert.deepEqual(await run("clean"), raw); assert.deepEqual(await run("smudge"), raw); });
 
-test("machineLocalSettings replaces defaults and rejects invalid entries", async () => { const a = await machine("custom-machine"); await sh("git", ["init", "-b", "main"], a.dir); let warning = ""; await fs.writeFile(path.join(a.dir, "git-sync.jsonc"), '{"machineLocalSettings":["theme", "", 2]}'); await fs.writeFile(path.join(a.dir, "settings.json"), JSON.stringify({ theme: "dark", lastChangelogVersion: "0.80.6" })); const config = await readConfig({ dir: a.dir, notify: text => { warning = text; } }); assert.deepEqual(config.machineLocalSettings, ["theme"]); assert.match(warning, /invalid machineLocalSettings/); await commitLocalChanges({ dir: a.dir }); const blob = (await sh("git", ["show", "HEAD:settings.json"], a.dir)).stdout; assert.doesNotMatch(blob, /"theme"/); assert.match(blob, /lastChangelogVersion/); });
+test("machineLocalSettings adds to the defaults and rejects invalid entries", async () => { const a = await machine("custom-machine"); await sh("git", ["init", "-b", "main"], a.dir); let warning = ""; await fs.writeFile(path.join(a.dir, "git-sync.jsonc"), '{"machineLocalSettings":["theme", "", 2]}'); await fs.writeFile(path.join(a.dir, "settings.json"), JSON.stringify({ theme: "dark", lastChangelogVersion: "0.80.6" })); const config = await readConfig({ dir: a.dir, notify: text => { warning = text; } }); assert.deepEqual(config.machineLocalSettings, ["theme"]); assert.match(warning, /invalid machineLocalSettings/); await commitLocalChanges({ dir: a.dir }); const blob = (await sh("git", ["show", "HEAD:settings.json"], a.dir)).stdout; assert.doesNotMatch(blob, /"theme"/); assert.doesNotMatch(blob, /lastChangelogVersion/); });
 
 test("machine-local values stay per machine while portable settings sync", async () => { const a = await machine("mla"), remote = await bare(a.root); await fs.writeFile(path.join(a.dir, "settings.json"), JSON.stringify({ theme: "dark", lastChangelogVersion: "0.80.6" }, null, 2) + "\n"); await runInit(remote, ctx, { dir: a.dir, gh: fakeGh() }); const b = await machine("mlb"); await fs.writeFile(path.join(b.dir, "settings.json"), JSON.stringify({ theme: "light", lastChangelogVersion: "0.81.0" }, null, 2) + "\n"); await runLink(remote, ctx, { dir: b.dir, gh: fakeGh() }); const linked = JSON.parse(await fs.readFile(path.join(b.dir, "settings.json"), "utf8")); assert.equal(linked.theme, "dark"); assert.equal(linked.lastChangelogVersion, "0.81.0"); await fs.writeFile(path.join(b.dir, "settings.json"), JSON.stringify({ ...linked, theme: "solar" }, null, 2) + "\n"); await runSync(ctx, { auto: false, push: true }, { dir: b.dir, gh: fakeGh() }); assert.doesNotMatch((await sh("git", ["show", "HEAD:settings.json"], b.dir)).stdout, /lastChangelogVersion/); const drifted = JSON.parse(await fs.readFile(path.join(a.dir, "settings.json"), "utf8")); await fs.writeFile(path.join(a.dir, "settings.json"), JSON.stringify({ ...drifted, lastChangelogVersion: "0.80.7" }, null, 2) + "\n"); await runSync(ctx, { auto: false, push: true }, { dir: a.dir, gh: fakeGh() }); const pulled = JSON.parse(await fs.readFile(path.join(a.dir, "settings.json"), "utf8")); assert.equal(pulled.theme, "solar"); assert.equal(pulled.lastChangelogVersion, "0.80.7"); });
 
@@ -69,3 +69,119 @@ test("mcp.json stays local unless opted in through extraPaths", async () => { co
 test("opted-in mcp.json syncs across machines while mcp-auth.json and mcp.log stay local", async () => { const a = await machine("mcp-a"), remote = await bare(a.root); await fs.writeFile(path.join(a.dir, "git-sync.jsonc"), '{"extraPaths": ["mcp.json"]}'); const servers = JSON.stringify({ mcpServers: { radius: { url: "https://radius.pi.dev/mcp" } } }, null, 2) + "\n"; await fs.writeFile(path.join(a.dir, "mcp.json"), servers); await fs.writeFile(path.join(a.dir, "mcp-auth.json"), '{"radius|https://radius.pi.dev/mcp":{"accessToken":"secret"}}'); await fs.writeFile(path.join(a.dir, "mcp.log"), "server noise\n"); await runInit(remote, ctx, { dir: a.dir, gh: fakeGh() }); const tree = (await sh("git", ["ls-tree", "-r", "--name-only", "HEAD"], a.dir)).stdout.split("\n"); assert.ok(tree.includes("mcp.json"), tree.join(",")); assert.ok(!tree.some(file => file.startsWith("mcp-auth"))); assert.ok(!tree.some(file => file.startsWith("mcp.log"))); const b = await machine("mcp-b"); await runLink(remote, ctx, { dir: b.dir, gh: fakeGh() }); assert.equal(await fs.readFile(path.join(b.dir, "mcp.json"), "utf8"), servers); await assert.rejects(fs.access(path.join(b.dir, "mcp-auth.json"))); await assert.rejects(fs.access(path.join(b.dir, "mcp.log"))); const updated = JSON.stringify({ mcpServers: { radius: { url: "https://radius.pi.dev/mcp" }, craft: { url: "https://mcp.craft.do/mcp" } } }, null, 2) + "\n"; await fs.writeFile(path.join(b.dir, "mcp.json"), updated); await fs.writeFile(path.join(b.dir, "mcp-auth.json"), '{"craft":{"accessToken":"local-only"}}'); await runSync(ctx, { auto: false, push: true }, { dir: b.dir, gh: fakeGh() }); await runSync(ctx, { auto: false, push: true }, { dir: a.dir, gh: fakeGh() }); assert.equal(await fs.readFile(path.join(a.dir, "mcp.json"), "utf8"), updated); assert.equal(await fs.readFile(path.join(a.dir, "mcp-auth.json"), "utf8"), '{"radius|https://radius.pi.dev/mcp":{"accessToken":"secret"}}'); await assert.rejects(fs.access(path.join(a.dir, "mcp.log.1"))); const guarded = await machine("mcp-guard"); await sh("git", ["init", "-b", "main"], guarded.dir); await ensureIgnoreRules(guarded.dir); await sh("git", ["add", "-f", "mcp-auth.json"], guarded.dir).catch(() => {}); await fs.writeFile(path.join(guarded.dir, "mcp-auth.json"), "x"); await sh("git", ["add", "-f", "mcp-auth.json"], guarded.dir); await assert.rejects(() => commitLocalChanges({ dir: guarded.dir }), /sensitive paths: mcp-auth\.json/); });
 
 test("extensions in nested subfolders sync, and sync warns about what git cannot push", async () => { const a = await machine("nested"), remote = await bare(a.root); const ext = path.join(a.dir, "extensions"); await fs.mkdir(path.join(ext, "my-ext", "src"), { recursive: true }); await fs.writeFile(path.join(ext, "my-ext", "index.ts"), "export {}\n"); await fs.writeFile(path.join(ext, "my-ext", "src", "util.ts"), "export {}\n"); await fs.mkdir(path.join(ext, "cloned"), { recursive: true }); await fs.writeFile(path.join(ext, "cloned", "index.ts"), "export {}\n"); await sh("git", ["init", "-b", "main"], path.join(ext, "cloned")); await sh("git", ["add", "-A"], path.join(ext, "cloned")); await sh("git", ["commit", "-m", "inner"], path.join(ext, "cloned")); await fs.mkdir(path.join(ext, "wip"), { recursive: true }); await fs.writeFile(path.join(ext, "wip", "index.ts"), "export {}\n"); await sh("git", ["init", "-b", "main"], path.join(ext, "wip")); await fs.mkdir(path.join(ext, "token-counter"), { recursive: true }); await fs.writeFile(path.join(ext, "token-counter", "index.ts"), "export {}\n"); await sh("git", ["init", "-b", "main"], a.dir); await sh("git", ["remote", "add", "origin", remote], a.dir); assert.deepEqual(await syncGaps(a.dir), { denied: [], nested: ["extensions/cloned", "extensions/wip"] }); const warnings: string[] = []; await runSync(ctx, { auto: false, push: true }, { dir: a.dir, gh: fakeGh(), notify: (text, level) => { if (level === "warning") warnings.push(text); } }); const tree = (await sh("git", ["ls-tree", "-r", "--name-only", "HEAD"], a.dir)).stdout.split("\n"); assert.ok(tree.includes("extensions/my-ext/src/util.ts"), tree.join(",")); assert.ok(!tree.includes("extensions/cloned/index.ts")); assert.ok(!tree.some(file => file.startsWith("extensions/wip/"))); assert.equal((await sh("git", ["ls-files", "-s", "extensions/cloned"], a.dir)).stdout, ""); assert.ok(!tree.some(file => file.startsWith("extensions/token-counter/"))); assert.deepEqual(await syncGaps(a.dir), { denied: ["extensions/token-counter/"], nested: ["extensions/cloned", "extensions/wip"] }); assert.equal(warnings.filter(text => text.includes("nested git repositories are skipped") && text.includes("extensions/cloned") && text.includes("extensions/wip")).length, 1); assert.equal(warnings.filter(text => text.includes("looks sensitive") && text.includes("extensions/token-counter/")).length, 1); await runSync(ctx, { auto: false, push: true }, { dir: a.dir, gh: fakeGh(), notify: (text, level) => { if (level === "warning") warnings.push(text); } }); assert.equal(warnings.length, 2, "gap warnings are reported once per session"); });
+
+async function writeSettings(dir: string, value: Record<string, unknown>) { await fs.writeFile(path.join(dir, "settings.json"), JSON.stringify(value, null, 2) + "\n"); }
+async function readSettings(dir: string) { return JSON.parse(await fs.readFile(path.join(dir, "settings.json"), "utf8")) as Record<string, unknown>; }
+async function twoMachines(name: string, settings: Record<string, unknown>) { const a = await machine(`${name}-a`), remote = await bare(a.root); await writeSettings(a.dir, settings); await runInit(remote, ctx, { dir: a.dir, gh: fakeGh() }); const b = await machine(`${name}-b`); await runLink(remote, ctx, { dir: b.dir, gh: fakeGh() }); return { a, b }; }
+const sync = (dir: string) => runSync(ctx, { auto: false, push: true }, { dir, gh: fakeGh() });
+const ecv = (version: string) => ({ '{"source":"npm:pi-subagents","scope":"user"}': version });
+/** Commit timestamps decide which side of a conflict is newer, so tests pin them. */
+const t0 = Math.floor(Date.now() / 1000) + 1000;
+async function at<T>(offset: number, fn: () => Promise<T>) { process.env.GIT_COMMITTER_DATE = process.env.GIT_AUTHOR_DATE = `@${t0 + offset} +0000`; try { return await fn(); } finally { delete process.env.GIT_COMMITTER_DATE; delete process.env.GIT_AUTHOR_DATE; } }
+async function syncAt(dir: string, offset: number) { const warnings: string[] = []; await at(offset, () => runSync(ctx, { auto: false, push: true }, { dir, gh: fakeGh(), notify: (text, level) => { if (level === "warning") warnings.push(text); } })); return warnings; }
+async function backups(dir: string) { const root = path.join(dir, ".git-sync", "conflicts"); const [stamp] = await fs.readdir(root); return path.join(root, stamp!); }
+/** What an older package version committed: settings.json with every key, including extensionChangelogVersions. */
+async function legacyCommit(dir: string, settings: Record<string, unknown>, offset: number) { await writeSettings(dir, settings); await at(offset, async () => { await sh("git", ["-c", "filter.pi-config-sync.clean=cat", "add", "settings.json"], dir); await sh("git", ["commit", "-qm", "legacy"], dir); }); }
+
+test("settings.json edits to different keys on two machines merge without a conflict", async () => {
+  const { a, b } = await twoMachines("merge", { theme: "dark", defaultModel: "m1", packages: ["npm:x"], compaction: { modelOverrides: { x: { reserveTokens: 1 } } } });
+  await writeSettings(a.dir, { ...(await readSettings(a.dir)), theme: "light", compaction: { modelOverrides: { x: { reserveTokens: 2 } } }, extensionChangelogVersions: ecv("0.89.0") });
+  await sync(a.dir);
+  await writeSettings(b.dir, { ...(await readSettings(b.dir)), defaultModel: "m2", compaction: { modelOverrides: { x: { reserveTokens: 1 }, y: { reserveTokens: 3 } } }, extensionChangelogVersions: ecv("0.89.2") });
+  await sync(b.dir);
+  await sync(a.dir);
+  for (const [dir, version] of [[a.dir, "0.89.0"], [b.dir, "0.89.2"]] as const) { const settings = await readSettings(dir); assert.equal(settings.theme, "light"); assert.equal(settings.defaultModel, "m2"); assert.deepEqual(settings.packages, ["npm:x"]); assert.deepEqual(settings.compaction, { modelOverrides: { x: { reserveTokens: 2 }, y: { reserveTokens: 3 } } }); assert.deepEqual(settings.extensionChangelogVersions, ecv(version), "changelog versions stay per machine"); }
+  assert.doesNotMatch((await sh("git", ["show", "HEAD:settings.json"], a.dir)).stdout, /extensionChangelogVersions/);
+  assert.equal((await sh("git", ["status", "--porcelain"], b.dir)).stdout, "");
+  const attributes = await fs.readFile(path.join(a.dir, ".gitattributes"), "utf8");
+  assert.deepEqual(attributes.split("\n").filter(line => line.startsWith("settings.json")), ["settings.json filter=pi-config-sync merge=pi-config-sync"]);
+});
+
+test("the same settings key changed on both machines keeps the newer change and saves the other", async () => {
+  const { a, b } = await twoMachines("clash", { theme: "dark", defaultModel: "m1" });
+  await writeSettings(a.dir, { ...(await readSettings(a.dir)), defaultModel: "from-a" });
+  await syncAt(a.dir, 10);
+  await writeSettings(b.dir, { ...(await readSettings(b.dir)), defaultModel: "from-b", theme: "light" });
+  const warnings = await syncAt(b.dir, 20);
+  assert.equal((await readSettings(b.dir)).defaultModel, "from-b", "newer local change wins");
+  assert.equal((await readSettings(b.dir)).theme, "light");
+  assert.ok(warnings.some(text => text.includes('settings.json ("defaultModel"): kept the local version')), warnings.join("\n"));
+  assert.equal(JSON.parse(await fs.readFile(path.join(await backups(b.dir), "settings.json"), "utf8")).defaultModel, "from-a", "remote value saved");
+  await syncAt(a.dir, 30);
+  assert.equal((await readSettings(a.dir)).defaultModel, "from-b");
+  await writeSettings(b.dir, { ...(await readSettings(b.dir)), defaultModel: "older-b" });
+  await at(40, () => commitLocalChanges({ dir: b.dir }));
+  await writeSettings(a.dir, { ...(await readSettings(a.dir)), defaultModel: "newer-a" });
+  await syncAt(a.dir, 50);
+  const later = await syncAt(b.dir, 60);
+  assert.equal((await readSettings(b.dir)).defaultModel, "newer-a", "newer remote change wins over an older local commit");
+  assert.ok(later.some(text => text.includes("kept the remote version")), later.join("\n"));
+  assert.equal((await sh("git", ["status", "--porcelain"], b.dir)).stdout, "");
+  await syncAt(a.dir, 70);
+  assert.equal((await sh("git", ["rev-parse", "HEAD"], a.dir)).stdout, (await sh("git", ["rev-parse", "HEAD"], b.dir)).stdout, "machines converge");
+});
+
+test("settings lists merge item by item", async () => {
+  const { a, b } = await twoMachines("lists", { packages: ["npm:a", "npm:b", "npm:c"] });
+  await writeSettings(a.dir, { packages: ["npm:a", "npm:c", "npm:d"] });
+  await syncAt(a.dir, 10);
+  await writeSettings(b.dir, { packages: ["npm:a", "npm:b", "npm:c", "npm:e"] });
+  const warnings = await syncAt(b.dir, 20);
+  assert.deepEqual((await readSettings(b.dir)).packages, ["npm:a", "npm:c", "npm:e", "npm:d"]);
+  assert.deepEqual(warnings, []);
+});
+
+test("conflicting edits to another file keep the newer hunk, merge the rest, and save the other version", async () => {
+  const { a, b } = await twoMachines("file-clash", { theme: "dark" });
+  await fs.writeFile(path.join(a.dir, "AGENTS.md"), "top\nm1\nm2\nm3\nbottom\n");
+  await syncAt(a.dir, 10);
+  await syncAt(b.dir, 20);
+  await fs.writeFile(path.join(a.dir, "AGENTS.md"), "top-a\nm1\nm2\nm3\nbottom-a\n");
+  await syncAt(a.dir, 30);
+  await fs.writeFile(path.join(b.dir, "AGENTS.md"), "top-b\nm1\nm2\nm3\nbottom\n");
+  const warnings = await syncAt(b.dir, 40);
+  assert.equal(await fs.readFile(path.join(b.dir, "AGENTS.md"), "utf8"), "top-b\nm1\nm2\nm3\nbottom-a\n");
+  assert.ok(warnings.some(text => text.includes("AGENTS.md: kept the local version")), warnings.join("\n"));
+  assert.equal(await fs.readFile(path.join(await backups(b.dir), "AGENTS.md"), "utf8"), "top-a\nm1\nm2\nm3\nbottom-a\n");
+});
+
+test("a newer deletion wins over an older edit and the edit is saved", async () => {
+  const { a, b } = await twoMachines("delete", { theme: "dark" });
+  await fs.mkdir(path.join(a.dir, "prompts"), { recursive: true });
+  await fs.writeFile(path.join(a.dir, "prompts", "x.md"), "v1\n");
+  await syncAt(a.dir, 10);
+  await syncAt(b.dir, 20);
+  await fs.writeFile(path.join(a.dir, "prompts", "x.md"), "v2 from a\n");
+  await syncAt(a.dir, 30);
+  await fs.rm(path.join(b.dir, "prompts", "x.md"));
+  const warnings = await syncAt(b.dir, 40);
+  await assert.rejects(fs.access(path.join(b.dir, "prompts", "x.md")));
+  assert.ok(warnings.some(text => text.includes("prompts/x.md: kept the local version")), warnings.join("\n"));
+  assert.equal(await fs.readFile(path.join(await backups(b.dir), "prompts", "x.md"), "utf8"), "v2 from a\n");
+});
+
+test("users stuck on extensionChangelogVersions conflicts recover once each machine updates", async () => {
+  const { a, b } = await twoMachines("stuck", { theme: "dark" });
+  await legacyCommit(a.dir, { ...(await readSettings(a.dir)), theme: "light", extensionChangelogVersions: ecv("0.89.0") }, 10);
+  await sh("git", ["push", "-q"], a.dir);
+  await legacyCommit(b.dir, { ...(await readSettings(b.dir)), extensionChangelogVersions: ecv("0.89.2") }, 20);
+  const warnings = await syncAt(b.dir, 30);
+  assert.deepEqual(warnings, [], "nothing conflicts once the key is machine-local");
+  assert.equal((await readSettings(b.dir)).theme, "light");
+  assert.deepEqual((await readSettings(b.dir)).extensionChangelogVersions, ecv("0.89.2"));
+  assert.doesNotMatch((await sh("git", ["show", "HEAD:settings.json"], b.dir)).stdout, /extensionChangelogVersions/);
+  await legacyCommit(a.dir, { ...(await readSettings(a.dir)), extensionChangelogVersions: ecv("0.89.3") }, 40);
+  assert.deepEqual(await syncAt(a.dir, 50), []);
+  await syncAt(b.dir, 60);
+  assert.deepEqual((await readSettings(a.dir)).extensionChangelogVersions, ecv("0.89.3"));
+  assert.equal((await sh("git", ["rev-parse", "HEAD"], a.dir)).stdout, (await sh("git", ["rev-parse", "HEAD"], b.dir)).stdout, "both machines converge");
+});
+
+test("a legacy settings.json attributes line is replaced by the filter-and-merge line", async () => {
+  const a = await machine("attrs");
+  await sh("git", ["init", "-b", "main"], a.dir);
+  await fs.writeFile(path.join(a.dir, ".gitattributes"), "*.png binary\nsettings.json filter=pi-config-sync\n");
+  await commitLocalChanges({ dir: a.dir });
+  assert.equal(await fs.readFile(path.join(a.dir, ".gitattributes"), "utf8"), "*.png binary\nsettings.json filter=pi-config-sync merge=pi-config-sync\n");
+  assert.match((await sh("git", ["config", "--get", "merge.pi-config-sync.driver"], a.dir)).stdout, /merge\.mjs' %O %A %B/);
+});

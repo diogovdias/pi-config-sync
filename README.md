@@ -31,20 +31,30 @@ That is the whole setup — from here on, syncing is automatic.
 ```text
 session start    → auto-sync (rate-limited, default every 5 min across sessions)
                    ensure ignore rules → commit allowlisted changes → fetch
-                   → fast-forward or rebase → push
+                   → fast-forward, or merge (settings.json merges key by key) → push
                    → notifies you to /reload when remote changes were pulled
 session shutdown → best-effort commit + push (next start reconciles the rest)
 ```
 
 ### Machine-local settings
 
-`settings.json` uses a git clean/smudge filter: portable settings are committed, while each machine retains its own selected top-level values. By default this is `lastChangelogVersion`; machine values stay in your live settings file (mirrored to `.git-sync/settings.machine.json`) and are absent only from committed blobs. On an existing repository, the first sync after upgrading creates a one-time commit that strips those keys from the committed blob and normalizes JSON formatting — the live settings file is unchanged.
+`settings.json` uses a git clean/smudge filter: portable settings are committed, while each machine retains its own selected top-level values. By default these are `lastChangelogVersion` and `extensionChangelogVersions` (pi's record of which pi and extension changelogs this machine has shown); machine values stay in your live settings file (mirrored to `.git-sync/settings.machine.json`) and are absent only from committed blobs. On an existing repository, the first sync after upgrading creates a one-time commit that strips those keys from the committed blob and normalizes JSON formatting — the live settings file is unchanged.
 
 The filter is fail-open: a checkout on a machine without pi-config-sync still works, but its machine-local values are not stripped until the package runs again. A newly linked machine gets its sidecar as pi writes its local settings.
 
+### Merging changes from two machines
+
+When both machines committed changes, the sync merges once (no rebase). Conflicts never stop the sync and never delete anything:
+
+- `settings.json` merges key by key, even nested keys, so changing the theme on one machine and the default model on another simply combine. Lists such as `packages` merge item by item: additions and removals from both machines apply. Machine-local keys are ignored by the merge, so older commits that still contain them do not conflict.
+- Other files merge line by line as usual.
+- When the same setting or the same lines changed differently on both machines, the newer change wins (by commit time of that file on each side; auto-sync commits shortly after you edit, even offline). The other version is saved on this machine under `.git-sync/conflicts/<time>/<file>`, which never syncs, and pi shows a notice naming what was kept. A newer deletion wins over an older edit the same way.
+
+Machines on an older package version still use git's rebase and line-based merge, and can stop on a conflict until they update.
+
 The filter script runs under the Node.js that runs pi. When pi ships as a single bundled executable (for example through mise), that executable cannot run the script, so the package uses the first `node` found on `PATH` instead and falls back to a disabled filter with a warning. Set `nodePath` in `git-sync.jsonc` to pin a specific Node.js binary; the git filter configuration is corrected on the next sync.
 
-Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions coordinate through a pid-liveness lock, subagent child processes never sync, and a diverged repo aborts the rebase and asks you to resolve manually — nothing is ever forced.
+Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions coordinate through a pid-liveness lock, subagent child processes never sync, and conflicting changes keep the newer version and save the other — nothing is ever forced or lost.
 
 ## Commands
 
@@ -53,7 +63,7 @@ Commits look like `pi config: auto-sync from <hostname>`. Concurrent pi sessions
 | `/gitsync init [name\|owner/name\|url]` | Create and connect the first-machine repository |
 | `/gitsync link [name\|owner/name\|url]` | Connect another machine |
 | `/gitsync status` | Show repository and tracked-secret status |
-| `/gitsync sync` | Commit, fetch/rebase, and push |
+| `/gitsync sync` | Commit, fetch/merge, and push |
 | `/gitsync push` | Commit and push without pulling |
 | `/gitsync pull` | Fetch and integrate remote changes |
 
@@ -99,22 +109,20 @@ Create `~/.pi/agent/git-sync.jsonc`:
   "includeHostname": true,
   "extraPaths": ["my-safe-directory"],
   "warnOnPublicRemote": true,
-  "machineLocalSettings": ["lastChangelogVersion"],
+  "machineLocalSettings": ["shellPath"],
   "nodePath": "/usr/local/bin/node"
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. To sync your user-level MCP server definitions (`pi mcp add`, `/mcp`), add `"mcp.json"` to `extraPaths`. It is opt-in because servers can be configured with inline API keys or headers; keep secrets in `${ENV_VAR}` references or OAuth before enabling it. `mcp-auth.json` and `mcp.log` never sync. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. To sync your user-level MCP server definitions (`pi mcp add`, `/mcp`), add `"mcp.json"` to `extraPaths`. It is opt-in because servers can be configured with inline API keys or headers; keep secrets in `${ENV_VAR}` references or OAuth before enabling it. `mcp-auth.json` and `mcp.log` never sync. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` adds keys to the built-in list (`lastChangelogVersion`, `extensionChangelogVersions`), which always applies; it accepts top-level keys only. Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
 
 ## Conflicts and uninstall
 
-On a sync conflict, rebase is aborted and the repository is left untouched for manual resolution:
+Conflicting changes resolve automatically (see [Merging changes from two machines](#merging-changes-from-two-machines)). To restore the version that was not kept, copy it back from `~/.pi/agent/.git-sync/conflicts/<time>/<file>`; the next sync shares it. Delete old folders there whenever you like.
 
-```sh
-cd ~/.pi/agent
-git status
-git pull --rebase
-```
+If git itself fails during a pull, the merge is aborted, the repository is left as it was, and the error shows git's message. Check `git status` in `~/.pi/agent`, then run `/gitsync sync` again.
+
+A machine stuck with `local and remote diverged with conflicts; rebase aborted` is running an older version: update with `pi update npm:pi-config-sync` and run `/reload`. The next sync recovers on its own.
 
 Remove the package with `pi remove npm:pi-config-sync`. Your local repository and remote remain until you delete them yourself.
 
