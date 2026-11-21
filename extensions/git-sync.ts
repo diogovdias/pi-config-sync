@@ -13,7 +13,7 @@ const LEGACY_MARKERS: Array<[string, string]> = [["# >>> pi-git-sync managed —
 const DEFAULT_PATHS = [".gitignore", ".gitattributes", "settings.json", "AGENTS.md", "git-sync.jsonc", "extensions", "chains", "prompts", "themes", "skills"];
 const DEFAULT_MACHINE_LOCAL = ["lastChangelogVersion"];
 const RUNTIME_LOG_DIR = "logs";
-const IGNORE_DENY = [`**/${RUNTIME_LOG_DIR}/`, "auth*", "*token*", "*secret*", "*credential*", "*.env", "*.env.*", "*.local.json", "**/node_modules/", ".DS_Store"];
+const IGNORE_DENY = [`**/${RUNTIME_LOG_DIR}/`, "auth*", "mcp-auth*", "mcp.log*", "*token*", "*secret*", "*credential*", "*.env", "*.env.*", "*.local.json", "**/node_modules/", ".DS_Store"];
 const LIKELY_SYNC_REPO_NAMES = ["pi-agent-config", "my-pi-config", "pi-config", "dotfiles-pi"];
 
 export interface GitSyncConfig { autoSyncIntervalMinutes?: number; extraPaths?: string[]; includeHostname?: boolean; machineLocalSettings?: string[]; nodePath?: string; warnOnPublicRemote?: boolean }
@@ -56,7 +56,7 @@ function statePath(dir: string) { return path.join(stateDir(dir), "state.json");
 function lockPath(dir: string) { return path.join(stateDir(dir), "lock"); }
 function isSubagentChild() { return Number(process.env.PI_SUBAGENT_DEPTH ?? "0") > 0; }
 
-export function isDenied(file: string) { const parts = file.toLowerCase().replaceAll("\\", "/").split("/").filter(Boolean); return parts.some(part => ["sessions", "state", "npm", "git", "bin", ".git-sync", "node_modules", RUNTIME_LOG_DIR].includes(part) || part.startsWith("auth") || part.includes("token") || part.includes("secret") || part.includes("credential") || part === ".env" || part.includes(".env.") || part.endsWith(".env") || part.endsWith(".local.json")); }
+export function isDenied(file: string) { const parts = file.toLowerCase().replaceAll("\\", "/").split("/").filter(Boolean); return parts.some(part => ["sessions", "state", "npm", "git", "bin", ".git-sync", "node_modules", RUNTIME_LOG_DIR].includes(part) || part.startsWith("auth") || part.startsWith("mcp-auth") || part.startsWith("mcp.log") || part.includes("token") || part.includes("secret") || part.includes("credential") || part === ".env" || part.includes(".env.") || part.endsWith(".env") || part.endsWith(".local.json")); }
 function validExtra(entry: string) { return entry.trim() !== "" && !entry.includes("..") && !path.isAbsolute(entry) && !isDenied(entry); }
 export function stripJsonComments(input: string) { let out = "", quote = "", escaped = false; for (let i = 0; i < input.length; i++) { const c = input[i]!, next = input[i + 1]; if (quote) { out += c; if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === quote) quote = ""; continue; } if (c === '"' || c === "'") { quote = c; out += c; } else if (c === "/" && next === "/") { while (i < input.length && input[i] !== "\n") i++; out += "\n"; } else if (c === "/" && next === "*") { i += 2; while (i < input.length && !(input[i] === "*" && input[i + 1] === "/")) i++; i++; } else out += c; } return out; }
 export function machineKeys(config: GitSyncConfig) { return config.machineLocalSettings ?? DEFAULT_MACHINE_LOCAL; }

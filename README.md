@@ -77,10 +77,10 @@ Nothing outside the allowlist ever syncs — new files are ignored by default. S
 
 | Path / pattern | Why |
 | --- | --- |
-| `auth*` (`auth.json`) | API keys and OAuth tokens |
+| `auth*` (`auth.json`), `mcp-auth*` (`mcp-auth.json`) | API keys and OAuth tokens — MCP sign-in credentials never leave the machine |
 | `*token*`, `*secret*`, `*credential*`, `*.env*`, `*.local.json` | Anything named like a secret |
 | `sessions/`, `state/`, `.git-sync/` | Local history and machine state |
-| `logs/` at any depth | Runtime logs, including permission audit/debug logs; retained locally |
+| `logs/` at any depth, `mcp.log*` | Runtime logs, including MCP server logs and permission audit/debug logs; retained locally |
 | `npm/`, `git/`, `bin/`, `node_modules` | Installed packages — pi reinstalls them from `settings.json` |
 
 The policy is enforced four ways — a managed allowlist `.gitignore`, `.git/info/exclude`, a post-stage hard guard that refuses additions or changes to denied paths, and a push guard that checks the committed tree and outgoing history — so force-staging a denied path does not bypass the commit guard. Deletions remain allowed for cleanup. It never force-pushes.
@@ -104,7 +104,7 @@ Create `~/.pi/agent/git-sync.jsonc`:
 }
 ```
 
-Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
+Unsafe extra paths (secrets, cache names, absolute paths, or `..`) are rejected. To sync your user-level MCP server definitions (`pi mcp add`, `/mcp`), add `"mcp.json"` to `extraPaths`. It is opt-in because servers can be configured with inline API keys or headers; keep secrets in `${ENV_VAR}` references or OAuth before enabling it. `mcp-auth.json` and `mcp.log` never sync. Set `includeHostname` to `false` to omit the machine hostname from automatic commit messages. `machineLocalSettings` replaces the default list when set; it accepts top-level keys only, and `[]` disables stripping (the filter still normalizes committed JSON formatting). Useful candidates include `shellPath`, `externalEditor`, `npmCommand`, `sessionDir`, and `trackingId`. `nodePath` is optional and only needed when pi runs as a bundled executable and Node.js is not on `PATH`, or to pin a specific interpreter for the `settings.json` filter.
 
 ## Conflicts and uninstall
 
